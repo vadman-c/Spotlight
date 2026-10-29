@@ -238,15 +238,17 @@ body { background: var(--void); color: var(--bone); font-family: var(--f-body); 
   // 바닥 · 링 · 벽
   const floor = mk(new THREE.CircleGeometry(R_ROOM + 1, 96), new THREE.MeshStandardMaterial({ color: 0x2b2527, roughness: 0.95 }), false);
   floor.rotation.x = -Math.PI / 2; scene.add(floor);
-  function ring(r, w, color, op) {
+  const floorMarks = []; // [재질, 밝을 때 불투명도, 어두울 때 불투명도]
+  function ring(r, w, color, op, darkOp) {
     const m = new THREE.Mesh(new THREE.RingGeometry(r - w / 2, r + w / 2, 160), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: op, depthWrite: false }));
-    m.rotation.x = -Math.PI / 2; m.position.y = 0.02; scene.add(m); return m;
+    m.rotation.x = -Math.PI / 2; m.position.y = 0.02; scene.add(m); floorMarks.push([m.material, op, darkOp]); return m;
   }
-  [12.8, 17.8, 22.8].forEach((r) => ring(r, 0.16, 0xd8d6dc, 0.32));
-  ring(R_ANGEL, 0.22, 0xd8d6dc, 0.45);
-  ring(3.2, 2.0, 0x8a1d2a, 0.55);
+  [12.8, 17.8, 22.8].forEach((r) => ring(r, 0.16, 0xd8d6dc, 0.32, 0.12));
+  ring(R_ANGEL, 0.22, 0xd8d6dc, 0.45, 0.16);
+  ring(3.2, 2.0, 0x8a1d2a, 0.55, 0.08);
   const centerDisc = new THREE.Mesh(new THREE.CircleGeometry(2.2, 48), new THREE.MeshBasicMaterial({ color: 0x3c3436, transparent: true, opacity: 0.7, depthWrite: false }));
   centerDisc.rotation.x = -Math.PI / 2; centerDisc.position.y = 0.025; scene.add(centerDisc);
+  floorMarks.push([centerDisc.material, 0.7, 0.05]);
 
   const wall = new THREE.Mesh(new THREE.CylinderGeometry(R_ROOM + 1, R_ROOM + 1, 16, 96, 1, true), new THREE.MeshStandardMaterial({ color: 0x1b1517, roughness: 1, side: THREE.BackSide }));
   wall.position.y = 8; wall.receiveShadow = true; scene.add(wall);
@@ -328,7 +330,7 @@ body { background: var(--void); color: var(--bone); font-family: var(--f-body); 
     s.position.set(lp.x, 16, lp.z); s.target.position.set(ap.x, 1.6, ap.z);
     s.castShadow = true; s.shadow.mapSize.set(512, 512);
     scene.add(s, s.target);
-    const shaft = new THREE.Mesh(new THREE.ConeGeometry(2.9, 16, 32, 1, true), new THREE.MeshBasicMaterial({ color: 0xffe9c4, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    const shaft = new THREE.Mesh(new THREE.ConeGeometry(2.9, 16, 32, 1, true), new THREE.MeshBasicMaterial({ color: 0xffe9c4, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, side: THREE.DoubleSide }));
     shaft.position.set((lp.x + ap.x) / 2, 8, (lp.z + ap.z) / 2);
     scene.add(shaft);
     spots[d] = { light: s, shaft };
@@ -351,7 +353,7 @@ body { background: var(--void); color: var(--bone); font-family: var(--f-body); 
   const tagsLayer = $('#tags');
   function makeChar(name, color, isPlayer) {
     const g = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.38, roughness: 0.55 });
+    const mat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.38, roughness: 0.55, fog: false }); // 파티원은 어둠 속에서도 보임
     const body = mk(new THREE.CylinderGeometry(0.28, 0.33, 1.0, 16), mat); body.position.y = 0.85;
     const hip = mk(new THREE.SphereGeometry(0.33, 16, 12), mat); hip.position.y = 0.38;
     const head = mk(new THREE.SphereGeometry(0.22, 16, 12), mat); head.position.y = 1.58;
@@ -766,8 +768,11 @@ body { background: var(--void); color: var(--bone); font-family: var(--f-body); 
     }
     if (sim.ended) light = 1;
 
-    ambient.intensity = 0.03 + 0.42 * light;
-    hemi.intensity = 0.05 + 0.25 * light;
+    ambient.intensity = 0.008 + 0.442 * light;
+    hemi.intensity = 0.01 + 0.29 * light;
+    // 암전 중에는 시야가 짧아진다: 약 14m부터 흐려져 30m면 완전히 어둠 (멀리 있는 천사의 자세는 안 보임)
+    scene.fog.near = 14 + 20 * light; scene.fog.far = 30 + 50 * light;
+    for (const [m, hi, lo] of floorMarks) m.opacity = lo + (hi - lo) * light;
     oculus.intensity = 2.2 * light;
 
     for (const d of DIRS) {
@@ -777,7 +782,7 @@ body { background: var(--void); color: var(--bone); font-family: var(--f-body); 
         if (k >= 0 && k <= 1) env = Math.min(1, k / 0.12, (1 - k) / 0.18);
       }
       spots[d].light.intensity = 9 * env;
-      spots[d].shaft.material.opacity = 0.17 * env;
+      spots[d].shaft.material.opacity = 0.09 * env;
     }
 
     // 점프 · 쓰러짐 · 메시 반영
